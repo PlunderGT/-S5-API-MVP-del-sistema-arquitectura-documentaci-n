@@ -1,0 +1,285 @@
+openapi: 3.0.3
+info:
+  title: SistemaRep API
+  description: |
+    API REST para gestión del ciclo de reparación y entrega de equipos en talleres técnicos.
+    
+    Permite registrar equipos, consultar su estado, actualizar el progreso de reparación
+    y listar órdenes de trabajo activas.
+  version: 1.0.0
+  contact:
+    name: SistemaRep
+    email: soporte@sistemarep.com
+
+servers:
+  - url: http://localhost:8000
+    description: Servidor local de desarrollo
+
+tags:
+  - name: General
+    description: Endpoints de estado del sistema
+  - name: Equipos
+    description: Gestión de equipos en reparación
+
+paths:
+
+  /:
+    get:
+      tags: [General]
+      summary: Estado de la API
+      description: Verifica que la API está funcionando correctamente
+      responses:
+        '200':
+          description: API funcionando
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  mensaje:
+                    type: string
+                    example: SistemaRep API v1.0.0 funcionando correctamente
+
+  /equipos:
+    post:
+      tags: [Equipos]
+      summary: Registrar nuevo equipo
+      description: |
+        Registra un nuevo equipo recibido en el taller.
+        El equipo se crea con estado inicial 'recibido'.
+        El número de serie debe ser único en el sistema.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EquipoEntrada'
+            example:
+              cliente_nombre: Juan García
+              cliente_telefono: "50212345678"
+              marca: Dell
+              modelo: Inspiron 15
+              numero_serie: SN-2024-001
+              falla_reportada: No enciende, posible falla en la fuente de poder
+              caracteristicas: Sin cargador, pantalla con rayón en esquina
+      responses:
+        '201':
+          description: Equipo registrado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipoRespuesta'
+        '400':
+          description: Número de serie duplicado u otro error de validación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Ya existe un equipo con número de serie 'SN-2024-001'"
+        '422':
+          description: Datos de entrada inválidos (campo obligatorio faltante)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    get:
+      tags: [Equipos]
+      summary: Listar todos los equipos
+      description: |
+        Retorna la lista de todos los equipos registrados.
+        Puede filtrarse por estado usando el parámetro de consulta `estado`.
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          description: Filtrar por estado del equipo
+          schema:
+            type: string
+            enum: [recibido, en_diagnostico, en_reparacion, listo, entregado]
+      responses:
+        '200':
+          description: Lista de equipos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EquipoRespuesta'
+        '400':
+          description: Estado de filtro inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /equipos/{equipo_id}:
+    get:
+      tags: [Equipos]
+      summary: Consultar equipo por ID
+      description: Retorna el detalle completo de un equipo específico
+      parameters:
+        - name: equipo_id
+          in: path
+          required: true
+          description: ID único del equipo (ej. A1B2C3D4)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Datos del equipo encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipoRespuesta'
+        '404':
+          description: Equipo no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Equipo con ID 'XXXXXXXX' no encontrado"
+
+  /equipos/{equipo_id}/estado:
+    patch:
+      tags: [Equipos]
+      summary: Actualizar estado de reparación
+      description: |
+        Actualiza el estado de progreso de la reparación de un equipo.
+        Estados válidos en orden de flujo:
+        recibido → en_diagnostico → en_reparacion → listo → entregado
+      parameters:
+        - name: equipo_id
+          in: path
+          required: true
+          description: ID único del equipo
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EstadoActualizacion'
+            example:
+              estado: en_reparacion
+              tecnico: Carlos Méndez
+      responses:
+        '200':
+          description: Estado actualizado correctamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EquipoRespuesta'
+        '400':
+          description: Estado inválido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                detail: "Estado inválido. Use uno de: recibido, en_diagnostico, en_reparacion, listo, entregado"
+        '404':
+          description: Equipo no encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+
+    EquipoEntrada:
+      type: object
+      required:
+        - cliente_nombre
+        - cliente_telefono
+        - marca
+        - modelo
+        - numero_serie
+        - falla_reportada
+      properties:
+        cliente_nombre:
+          type: string
+          minLength: 2
+          description: Nombre completo del cliente
+        cliente_telefono:
+          type: string
+          minLength: 8
+          description: Teléfono de contacto del cliente
+        marca:
+          type: string
+          description: Marca del equipo (Dell, HP, Apple, etc.)
+        modelo:
+          type: string
+          description: Modelo del equipo
+        numero_serie:
+          type: string
+          minLength: 3
+          description: Número de serie único del equipo
+        falla_reportada:
+          type: string
+          minLength: 5
+          description: Descripción de la falla reportada por el cliente
+        caracteristicas:
+          type: string
+          nullable: true
+          description: Características adicionales (accesorios, daños visibles, etc.)
+
+    EstadoActualizacion:
+      type: object
+      required:
+        - estado
+      properties:
+        estado:
+          type: string
+          enum: [recibido, en_diagnostico, en_reparacion, listo, entregado]
+          description: Nuevo estado de la reparación
+        tecnico:
+          type: string
+          nullable: true
+          description: Nombre del técnico que realiza el cambio
+
+    EquipoRespuesta:
+      type: object
+      properties:
+        id:
+          type: string
+          description: ID único generado por el sistema
+          example: A1B2C3D4
+        cliente_nombre:
+          type: string
+        cliente_telefono:
+          type: string
+        marca:
+          type: string
+        modelo:
+          type: string
+        numero_serie:
+          type: string
+        falla_reportada:
+          type: string
+        caracteristicas:
+          type: string
+          nullable: true
+        estado:
+          type: string
+          enum: [recibido, en_diagnostico, en_reparacion, listo, entregado]
+        tecnico:
+          type: string
+          nullable: true
+        fecha_ingreso:
+          type: string
+          format: date-time
+        fecha_actualizacion:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+          description: Descripción del error
